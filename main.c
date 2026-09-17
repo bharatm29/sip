@@ -187,7 +187,7 @@ void write_to_file(int32_t local_header_addr, FILE *zip,
 }
 
 int main() {
-    FILE *zip = fopen("/home/bharat/Documents/mobile_submission.zip", "rb");
+    FILE *zip = fopen("zip.zip", "rb");
 
     if (zip == NULL) {
         perror("fopen");
@@ -199,23 +199,17 @@ int main() {
 
     uint8_t *bytes = malloc(sizeof(uint8_t) * 22);
     fread(bytes, 1, 22, zip);
-
-    int cd_numbers = 0;
-    memcpy(&cd_numbers, bytes + 10, 2);
-
-    int cd_addr_size = 0;
-    memcpy(&cd_addr_size, bytes + 12, 4);
-    int cd_addr = 0;
-    memcpy(&cd_addr, bytes + 16, 4);
+    zip_eocd_t eocd = {0};
+    memcpy(&eocd, bytes, sizeof(zip_eocd_t));
 
     free(bytes);
-    bytes = malloc(sizeof(uint8_t) * cd_addr_size);
-    fseek(zip, cd_addr, SEEK_SET); // seek file to central directory
+    bytes = malloc(sizeof(uint8_t) * eocd.cd_size);
+    fseek(zip, eocd.cd_offset, SEEK_SET); // seek file to central directory
 
-    fread(bytes, 1, cd_addr_size, zip);
+    fread(bytes, 1, eocd.cd_size, zip);
 
     int offset = 0;
-    for (int i = 0; i < cd_numbers; i++) {
+    for (int i = 0; i < eocd.cd_records_total; i++) {
         zip_central_dir_header_t* header = (zip_central_dir_header_t*) (bytes + offset);
 
         int16_t filename_len, extra_field_len, file_comment_len;
