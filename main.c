@@ -51,6 +51,21 @@ typedef struct {
 
 _Static_assert(sizeof(zip_central_dir_header_t) == 46, "unexpected padding");
 
+#pragma pack(push, 1)
+typedef struct {
+    uint32_t magic;
+    uint16_t disk_num;
+    uint16_t cd_start_disk;
+    uint16_t cd_records_this_disk;
+    uint16_t cd_records_total;
+    uint32_t cd_size;
+    uint32_t cd_offset;
+    uint16_t comment_len;
+} zip_eocd_t;
+#pragma pack(pop)
+
+_Static_assert(sizeof(zip_eocd_t) == 22, "unexpected padding");
+
 #define CHUNK 16384
 
 // gracefully stolen!
@@ -201,17 +216,15 @@ int main() {
 
     int offset = 0;
     for (int i = 0; i < cd_numbers; i++) {
-        // FIXME: convert these memcpy calls to struct casting
+        zip_central_dir_header_t* header = (zip_central_dir_header_t*) (bytes + offset);
+
         int16_t filename_len, extra_field_len, file_comment_len;
-        memcpy(&filename_len, bytes + 28 + offset, 2);
-        memcpy(&extra_field_len, bytes + 30 + offset, 2);
-        memcpy(&file_comment_len, bytes + 32 + offset, 2);
 
-        char filename[filename_len + 1];
-        memcpy(filename, bytes + 46 + offset, filename_len);
-        filename[filename_len] = '\0';
+        char filename[header->filename_len + 1];
+        memcpy(filename, bytes + 46 + offset, header->filename_len);
+        filename[header->filename_len] = '\0';
 
-        if (filename[filename_len - 1] == '/') {
+        if (filename[header->filename_len - 1] == '/') {
             printf("Directory: %s\n", filename);
             if (mkdir(filename, 0700)) {
                 perror("mkdir");
@@ -219,18 +232,10 @@ int main() {
             }
         } else {
             printf("%s\n", filename);
-
-            int32_t compr_size, crc;
-            memcpy(&compr_size, bytes + 20 + offset, 4);
-            memcpy(&crc, bytes + 16 + offset, 4);
-
-            int32_t local_header_addr = 0;
-            memcpy(&local_header_addr, bytes + 42 + offset, 4);
-
-            write_to_file(local_header_addr, zip, compr_size, crc);
+            write_to_file(header->local_header_offset, zip, header->compressed_size, header->crc32);
         }
 
-        offset += 46 + filename_len + extra_field_len + file_comment_len;
+        offset += 46 + header->filename_len + header->extra_len + header->comment_len;
     }
 
     free(bytes);
