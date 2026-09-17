@@ -27,6 +27,30 @@ typedef struct {
 
 _Static_assert(sizeof(zip_local_file_header_t) == 30, "unexpected padding");
 
+#pragma pack(push, 1)
+typedef struct {
+    uint32_t magic;
+    uint16_t version_made_by;
+    uint16_t version_needed;
+    uint16_t flags;
+    uint16_t compression;
+    uint16_t mod_time;
+    uint16_t mod_date;
+    uint32_t crc32;
+    uint32_t compressed_size;
+    uint32_t uncompressed_size;
+    uint16_t filename_len;
+    uint16_t extra_len;
+    uint16_t comment_len;
+    uint16_t disk_num_start;
+    uint16_t internal_attrs;
+    uint32_t external_attrs;
+    uint32_t local_header_offset;
+} zip_central_dir_header_t;
+#pragma pack(pop)
+
+_Static_assert(sizeof(zip_central_dir_header_t) == 46, "unexpected padding");
+
 #define CHUNK 16384
 
 // gracefully stolen!
@@ -148,41 +172,43 @@ void write_to_file(int32_t local_header_addr, FILE *zip,
 }
 
 int main() {
-    FILE *zip = fopen("./zip.zip", "rb");
+    FILE *zip = fopen("/home/bharat/Documents/mobile_submission.zip", "rb");
 
     if (zip == NULL) {
         perror("fopen");
         exit(EXIT_FAILURE);
     }
 
-    fseek(zip, -22, SEEK_END); // go to 22 bytes before the end
+    fseek(zip, -22, SEEK_END); // go to 22 bytes before the end (ignoring the
+                               // fact that it can have comment)
 
     uint8_t *bytes = malloc(sizeof(uint8_t) * 22);
     fread(bytes, 1, 22, zip);
 
     int cd_numbers = 0;
-    memmove(&cd_numbers, bytes + 10, 2);
+    memcpy(&cd_numbers, bytes + 10, 2);
 
     int cd_addr_size = 0;
-    memmove(&cd_addr_size, bytes + 12, 4);
+    memcpy(&cd_addr_size, bytes + 12, 4);
     int cd_addr = 0;
-    memmove(&cd_addr, bytes + 16, 4);
+    memcpy(&cd_addr, bytes + 16, 4);
 
     free(bytes);
     bytes = malloc(sizeof(uint8_t) * cd_addr_size);
-    fseek(zip, cd_addr, SEEK_SET);
+    fseek(zip, cd_addr, SEEK_SET); // seek file to central directory
 
     fread(bytes, 1, cd_addr_size, zip);
 
     int offset = 0;
     for (int i = 0; i < cd_numbers; i++) {
+        // FIXME: convert these memcpy calls to struct casting
         int16_t filename_len, extra_field_len, file_comment_len;
-        memmove(&filename_len, bytes + 28 + offset, 2);
-        memmove(&extra_field_len, bytes + 30 + offset, 2);
-        memmove(&file_comment_len, bytes + 32 + offset, 2);
+        memcpy(&filename_len, bytes + 28 + offset, 2);
+        memcpy(&extra_field_len, bytes + 30 + offset, 2);
+        memcpy(&file_comment_len, bytes + 32 + offset, 2);
 
         char filename[filename_len + 1];
-        memmove(filename, bytes + 46 + offset, filename_len);
+        memcpy(filename, bytes + 46 + offset, filename_len);
         filename[filename_len] = '\0';
 
         if (filename[filename_len - 1] == '/') {
@@ -195,11 +221,11 @@ int main() {
             printf("%s\n", filename);
 
             int32_t compr_size, crc;
-            memmove(&compr_size, bytes + 20 + offset, 4);
-            memmove(&crc, bytes + 16 + offset, 4);
+            memcpy(&compr_size, bytes + 20 + offset, 4);
+            memcpy(&crc, bytes + 16 + offset, 4);
 
             int32_t local_header_addr = 0;
-            memmove(&local_header_addr, bytes + 42 + offset, 4);
+            memcpy(&local_header_addr, bytes + 42 + offset, 4);
 
             write_to_file(local_header_addr, zip, compr_size, crc);
         }
@@ -208,4 +234,5 @@ int main() {
     }
 
     free(bytes);
+    fclose(zip);
 }
