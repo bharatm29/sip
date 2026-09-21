@@ -1,9 +1,13 @@
 #include "inflate.c"
 #include "structs.c"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdbool.h>
+
+// Referring to https://en.wikipedia.org/wiki/ZIP_(file_format)#File_headers
 
 void write_to_file(int32_t local_header_addr, FILE *zip,
                    uint32_t compressed_size, uint32_t crc) {
@@ -49,8 +53,25 @@ void write_to_file(int32_t local_header_addr, FILE *zip,
     free(data);
 }
 
-int main() {
-    FILE *zip = fopen("zip.zip", "rb");
+int main(int argc, const char** argv) {
+    if (argc < 2) {
+        fprintf(stderr, "USAGE: %s [FILE].zip [-l]\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    bool list = false;
+    for (int i = 0; i < argc; ++i) {
+        if (strcmp(argv[i], "-l") == 0) {
+            list = true;
+        }
+
+        if (strcmp(argv[i], "-h") == 0) {
+            fprintf(stdout, "USAGE: %s [FILE].zip [-l]\n", argv[0]);
+            exit(EXIT_SUCCESS);
+        }
+    }
+
+    FILE *zip = fopen(argv[1], "rb");
 
     if (zip == NULL) {
         perror("fopen");
@@ -76,11 +97,17 @@ int main() {
         zip_central_dir_header_t *header =
             (zip_central_dir_header_t *)(bytes + offset);
 
-        int16_t filename_len, extra_field_len, file_comment_len;
-
         char filename[header->filename_len + 1];
         memcpy(filename, bytes + 46 + offset, header->filename_len);
         filename[header->filename_len] = '\0';
+
+        offset +=
+            46 + header->filename_len + header->extra_len + header->comment_len;
+
+        if (list) {
+            printf("%s\n", filename);
+            continue;
+        }
 
         if (filename[header->filename_len - 1] == '/') {
             printf("Directory: %s\n", filename);
@@ -93,9 +120,6 @@ int main() {
             write_to_file(header->local_header_offset, zip,
                           header->compressed_size, header->crc32);
         }
-
-        offset +=
-            46 + header->filename_len + header->extra_len + header->comment_len;
     }
 
     free(bytes);
